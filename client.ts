@@ -13,7 +13,7 @@ export function getKey(key: string, cb: Callback) {
     return;
   }
 
-  // If there is nothing in the pending patch, that means this is the first
+  // If there is nothing in the pending batch, that means this is the first
   // call to getKey and we should call setTimeout below.
   const shouldEnqueueCall = Object.keys(pendingBatch).length === 0;
 
