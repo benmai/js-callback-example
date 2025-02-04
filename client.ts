@@ -4,21 +4,23 @@ export type Callback = (value: number) => void;
 type Batch = { [key: string]: Callback[] };
 type KVResponse = { [key: string]: number };
 
-var batch: Batch = {};
-var inFlightRequests: Batch = {};
+var pendingBatch: Batch = {};
+var inFlightBatch: Batch = {};
 
 export function getKey(key: string, cb: Callback) {
-  if (key in inFlightRequests) {
-    inFlightRequests[key].push(cb);
+  if (key in inFlightBatch) {
+    inFlightBatch[key].push(cb);
     return;
   }
 
-  const shouldEnqueueCall = Object.keys(batch).length === 0;
+  // If there is nothing in the pending patch, that means this is the first
+  // call to getKey and we should call setTimeout below.
+  const shouldEnqueueCall = Object.keys(pendingBatch).length === 0;
 
-  if (key in batch) {
-    batch[key].push(cb);
+  if (key in pendingBatch) {
+    pendingBatch[key].push(cb);
   } else {
-    batch[key] = [cb];
+    pendingBatch[key] = [cb];
   }
 
   if (!shouldEnqueueCall) {
@@ -26,17 +28,17 @@ export function getKey(key: string, cb: Callback) {
   }
 
   setTimeout(() => {
-    const keys = Object.keys(batch);
-    inFlightRequests = { ...inFlightRequests, ...batch };
-    batch = {};
+    const keys = Object.keys(pendingBatch);
+    inFlightBatch = { ...inFlightBatch, ...pendingBatch };
+    pendingBatch = {};
 
     httpGetJson(`/read?keys=${keys.join(",")}`, (response: KVResponse) => {
       for (const key of keys) {
-        const callbacks = inFlightRequests[key];
+        const callbacks = inFlightBatch[key];
         for (const cb of callbacks) {
           cb(response[key]);
         }
-        delete inFlightRequests[key];
+        delete inFlightBatch[key];
       }
     });
   }, debounceMs);
@@ -45,7 +47,7 @@ export function getKey(key: string, cb: Callback) {
 const base = "http://localhost:3000";
 async function httpGetJson(url: string, cb: (response: KVResponse) => void) {
   const fullUrl = `${base}${url}`;
-  console.log(`Made network request with URL ${fullUrl}`);
+  console.log(`Making network request with URL ${fullUrl}`);
   const response = await fetch(fullUrl);
   const json = await response.json();
   cb(json);
